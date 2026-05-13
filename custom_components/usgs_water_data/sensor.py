@@ -49,6 +49,25 @@ def _build_ts_name_map(coordinator: USGSWaterDataCoordinator) -> dict[str, str]:
     return name_map
 
 
+def _build_ts_metadata_map(
+    coordinator: USGSWaterDataCoordinator,
+) -> dict[str, dict[str, Any]]:
+    """Build a map of time_series_id -> metadata fields from time-series-metadata."""
+    metadata_map: dict[str, dict[str, Any]] = {}
+    for record in coordinator.data.get("time_series_metadata", []):
+        ts_id = record.get("time_series_id") or record.get("id")
+        if not ts_id:
+            continue
+        metadata_map[str(ts_id)] = {
+            "parameter_name": record.get("parameter_name"),
+            "statistic_id": record.get("statistic_id"),
+            "computation_identifier": record.get("computation_identifier"),
+            "parameter_code": record.get("parameter_code"),
+            "sublocation_identifier": record.get("sublocation_identifier"),
+        }
+    return metadata_map
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -67,6 +86,7 @@ async def async_setup_entry(
         )
     else:
         ts_name_map = _build_ts_name_map(coordinator)
+        ts_metadata_map = _build_ts_metadata_map(coordinator)
 
         series_entities: dict[str, USGSSeriesSensor] = {}
         for source in SERIES_SOURCES:
@@ -94,6 +114,7 @@ async def async_setup_entry(
                     source=source,
                     series_id=series_id,
                     ts_name_map=ts_name_map,
+                    ts_metadata_map=ts_metadata_map,
                 )
 
         _LOGGER.info(
@@ -102,10 +123,9 @@ async def async_setup_entry(
             location_id,
         )
         # Log data availability for debugging
-        if series_entities or True:  # Always log for now
-            for source in SERIES_SOURCES:
-                count = len(coordinator.data.get(source.source_key, []))
-                _LOGGER.debug("%s has %d records", source.source_key, count)
+        for source in SERIES_SOURCES:
+            count = len(coordinator.data.get(source.source_key, []))
+            _LOGGER.debug("%s has %d records", source.source_key, count)
         entities.extend(series_entities.values())
 
     async_add_entities(entities)
@@ -208,6 +228,7 @@ class USGSSeriesSensor(USGSBaseEntity, SensorEntity):
         source: SeriesDescriptor,
         series_id: str,
         ts_name_map: dict[str, str] | None = None,
+        ts_metadata_map: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         """Initialize series sensor."""
         super().__init__(coordinator, location_id)
@@ -216,17 +237,39 @@ class USGSSeriesSensor(USGSBaseEntity, SensorEntity):
         # Unique ID is scoped to the monitoring location + series ID only,
         # independent of config entry IDs or source collection names.
         self._attr_unique_id = f"{location_id}_{series_id}"
-        # Human-readable name: prefer parameter_name from metadata, then
-        # parameter_code from the record, then fall back to the raw series ID.
+
+        # Build a disambiguated display name so multiple time series for the same
+        # parameter (e.g., discharge/gage height) remain distinguishable.
         initial_record = self._find_record_in(coordinator.data)
-        param_code = (initial_record or {}).get("parameter_code", "")
-        param_name = (
-            (ts_name_map or {}).get(series_id)
-            or (initial_record or {}).get("parameter_name")
-            or (f"{source.label} {param_code}" if param_code else None)
-            or f"{source.label} {series_id}"
+        series_meta = (ts_metadata_map or {}).get(series_id, {})
+        param_code = (initial_record or {}).get("parameter_code") or series_meta.get(
+            "parameter_code"
         )
-        self._attr_name = param_name
+        param_name = (
+            series_meta.get("parameter_name")
+            or (ts_name_map or {}).get(series_id)
+            or (initial_record or {}).get("parameter_name")
+            or (f"Parameter {param_code}" if param_code else None)
+            or f"Series {series_id}"
+        )
+        statistic_id = (initial_record or {}).get("statistic_id") or series_meta.get(
+            "statistic_id"
+        )
+        computation_identifier = series_meta.get("computation_identifier")
+        sublocation_identifier = (initial_record or {}).get(
+            "sublocation_identifier"
+        ) or series_meta.get("sublocation_identifier")
+
+        qualifiers = [source.label]
+        if statistic_id:
+            qualifiers.append(f"stat {statistic_id}")
+        if computation_identifier:
+            qualifiers.append(str(computation_identifier))
+        if sublocation_identifier:
+            qualifiers.append(f"sub {sublocation_identifier}")
+
+        qualifier_text = ", ".join(qualifiers)
+        self._attr_name = f"{param_name} ({qualifier_text})"
 
     def _find_record_in(self, data: dict[str, Any]) -> dict[str, Any] | None:
         """Look up the record for this series in the given data snapshot."""

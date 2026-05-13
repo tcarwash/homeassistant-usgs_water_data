@@ -14,6 +14,9 @@ from .api import USGSWaterDataApiClient
 
 LOGGER = logging.getLogger(__name__)
 
+# Maximum number of USGS API requests allowed to run concurrently.
+_CONCURRENT_REQUESTS = 3
+
 
 def _feature_properties(feature: dict[str, Any]) -> dict[str, Any]:
     """Return normalized properties from a GeoJSON feature."""
@@ -44,6 +47,7 @@ class USGSWaterDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.monitoring_location_id = monitoring_location_id
         self.history_days = max(0, history_days)
         self.record_limit = max(1, record_limit)
+        self._semaphore = asyncio.Semaphore(_CONCURRENT_REQUESTS)
 
         super().__init__(
             hass,
@@ -54,6 +58,10 @@ class USGSWaterDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch all data for the configured monitoring location."""
+        async def throttled(coro):
+            async with self._semaphore:
+                return await coro
+
         datetime_filter = None
         if self.history_days:
             start = datetime.now(timezone.utc) - timedelta(days=self.history_days)
@@ -62,45 +70,45 @@ class USGSWaterDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         try:
             tasks = [
-                self.api.get_monitoring_location(self.monitoring_location_id),
-                self.api.get_collection_items(
+                throttled(self.api.get_monitoring_location(self.monitoring_location_id)),
+                throttled(self.api.get_collection_items(
                     "combined-metadata",
                     self.monitoring_location_id,
                     limit=self.record_limit,
-                ),
-                self.api.get_collection_items(
+                )),
+                throttled(self.api.get_collection_items(
                     "time-series-metadata",
                     self.monitoring_location_id,
                     limit=self.record_limit,
-                ),
-                self.api.get_collection_items(
+                )),
+                throttled(self.api.get_collection_items(
                     "field-measurements-metadata",
                     self.monitoring_location_id,
                     limit=self.record_limit,
-                ),
-                self.api.get_collection_items(
+                )),
+                throttled(self.api.get_collection_items(
                     "latest-continuous",
                     self.monitoring_location_id,
                     limit=self.record_limit,
-                ),
-                self.api.get_collection_items(
+                )),
+                throttled(self.api.get_collection_items(
                     "latest-daily",
                     self.monitoring_location_id,
                     limit=self.record_limit,
-                ),
-                self.api.get_collection_items(
+                )),
+                throttled(self.api.get_collection_items(
                     "field-measurements",
                     self.monitoring_location_id,
                     limit=self.record_limit,
                     extra_params=(
                         {"datetime": datetime_filter} if datetime_filter else None
                     ),
-                ),
-                self.api.get_collection_items(
+                )),
+                throttled(self.api.get_collection_items(
                     "peaks",
                     self.monitoring_location_id,
                     limit=self.record_limit,
-                ),
+                )),
             ]
             (
                 monitoring_location,
@@ -117,18 +125,18 @@ class USGSWaterDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             history_daily: list[dict[str, Any]] = []
             if datetime_filter:
                 history_continuous, history_daily = await asyncio.gather(
-                    self.api.get_collection_items(
+                    throttled(self.api.get_collection_items(
                         "continuous",
                         self.monitoring_location_id,
                         limit=self.record_limit,
                         extra_params={"datetime": datetime_filter},
-                    ),
-                    self.api.get_collection_items(
+                    )),
+                    throttled(self.api.get_collection_items(
                         "daily",
                         self.monitoring_location_id,
                         limit=self.record_limit,
                         extra_params={"datetime": datetime_filter},
-                    ),
+                    )),
                 )
         except Exception as err:
             raise UpdateFailed(f"Error fetching data from USGS API: {err}") from err

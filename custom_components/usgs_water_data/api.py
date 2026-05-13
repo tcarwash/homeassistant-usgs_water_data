@@ -40,9 +40,7 @@ class USGSWaterDataApiClient:
                     timeout=30,
                 ) as response:
                     if response.status == 429:
-                        retry_after = float(
-                            response.headers.get("Retry-After", delay)
-                        )
+                        retry_after = float(response.headers.get("Retry-After", delay))
                         _LOGGER.warning(
                             "Rate-limited by USGS API (%s), retrying in %.1fs (attempt %d/%d)",
                             path,

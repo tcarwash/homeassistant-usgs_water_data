@@ -58,6 +58,7 @@ class USGSWaterDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch all data for the configured monitoring location."""
+
         async def throttled(coro):
             async with self._semaphore:
                 return await coro
@@ -70,45 +71,61 @@ class USGSWaterDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         try:
             tasks = [
-                throttled(self.api.get_monitoring_location(self.monitoring_location_id)),
-                throttled(self.api.get_collection_items(
-                    "combined-metadata",
-                    self.monitoring_location_id,
-                    limit=self.record_limit,
-                )),
-                throttled(self.api.get_collection_items(
-                    "time-series-metadata",
-                    self.monitoring_location_id,
-                    limit=self.record_limit,
-                )),
-                throttled(self.api.get_collection_items(
-                    "field-measurements-metadata",
-                    self.monitoring_location_id,
-                    limit=self.record_limit,
-                )),
-                throttled(self.api.get_collection_items(
-                    "latest-continuous",
-                    self.monitoring_location_id,
-                    limit=self.record_limit,
-                )),
-                throttled(self.api.get_collection_items(
-                    "latest-daily",
-                    self.monitoring_location_id,
-                    limit=self.record_limit,
-                )),
-                throttled(self.api.get_collection_items(
-                    "field-measurements",
-                    self.monitoring_location_id,
-                    limit=self.record_limit,
-                    extra_params=(
-                        {"datetime": datetime_filter} if datetime_filter else None
-                    ),
-                )),
-                throttled(self.api.get_collection_items(
-                    "peaks",
-                    self.monitoring_location_id,
-                    limit=self.record_limit,
-                )),
+                throttled(
+                    self.api.get_monitoring_location(self.monitoring_location_id)
+                ),
+                throttled(
+                    self.api.get_collection_items(
+                        "combined-metadata",
+                        self.monitoring_location_id,
+                        limit=self.record_limit,
+                    )
+                ),
+                throttled(
+                    self.api.get_collection_items(
+                        "time-series-metadata",
+                        self.monitoring_location_id,
+                        limit=self.record_limit,
+                    )
+                ),
+                throttled(
+                    self.api.get_collection_items(
+                        "field-measurements-metadata",
+                        self.monitoring_location_id,
+                        limit=self.record_limit,
+                    )
+                ),
+                throttled(
+                    self.api.get_collection_items(
+                        "latest-continuous",
+                        self.monitoring_location_id,
+                        limit=self.record_limit,
+                    )
+                ),
+                throttled(
+                    self.api.get_collection_items(
+                        "latest-daily",
+                        self.monitoring_location_id,
+                        limit=self.record_limit,
+                    )
+                ),
+                throttled(
+                    self.api.get_collection_items(
+                        "field-measurements",
+                        self.monitoring_location_id,
+                        limit=self.record_limit,
+                        extra_params=(
+                            {"datetime": datetime_filter} if datetime_filter else None
+                        ),
+                    )
+                ),
+                throttled(
+                    self.api.get_collection_items(
+                        "peaks",
+                        self.monitoring_location_id,
+                        limit=self.record_limit,
+                    )
+                ),
             ]
             (
                 monitoring_location,
@@ -125,18 +142,22 @@ class USGSWaterDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             history_daily: list[dict[str, Any]] = []
             if datetime_filter:
                 history_continuous, history_daily = await asyncio.gather(
-                    throttled(self.api.get_collection_items(
-                        "continuous",
-                        self.monitoring_location_id,
-                        limit=self.record_limit,
-                        extra_params={"datetime": datetime_filter},
-                    )),
-                    throttled(self.api.get_collection_items(
-                        "daily",
-                        self.monitoring_location_id,
-                        limit=self.record_limit,
-                        extra_params={"datetime": datetime_filter},
-                    )),
+                    throttled(
+                        self.api.get_collection_items(
+                            "continuous",
+                            self.monitoring_location_id,
+                            limit=self.record_limit,
+                            extra_params={"datetime": datetime_filter},
+                        )
+                    ),
+                    throttled(
+                        self.api.get_collection_items(
+                            "daily",
+                            self.monitoring_location_id,
+                            limit=self.record_limit,
+                            extra_params={"datetime": datetime_filter},
+                        )
+                    ),
                 )
         except Exception as err:
             raise UpdateFailed(f"Error fetching data from USGS API: {err}") from err

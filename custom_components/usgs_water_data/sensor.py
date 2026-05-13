@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,6 +16,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_MONITORING_LOCATION_ID, DOMAIN
 from .coordinator import USGSWaterDataCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,7 @@ def _build_ts_name_map(coordinator: USGSWaterDataCoordinator) -> dict[str, str]:
         param_name = record.get("parameter_name")
         if ts_id and param_name:
             name_map[str(ts_id)] = param_name
+    _LOGGER.debug("Built time_series_metadata name map with %d entries", len(name_map))
     return name_map
 
 
@@ -53,31 +57,57 @@ async def async_setup_entry(
     """Set up sensors from a config entry."""
     coordinator: USGSWaterDataCoordinator = hass.data[DOMAIN][entry.entry_id]
     location_id = entry.data[CONF_MONITORING_LOCATION_ID]
-    ts_name_map = _build_ts_name_map(coordinator)
 
     entities: list[SensorEntity] = [USGSSummarySensor(coordinator, location_id)]
 
-    series_entities: dict[str, USGSSeriesSensor] = {}
-    for source in SERIES_SOURCES:
-        for record in coordinator.data.get(source.source_key, []):
-            series_id = record.get(source.id_field)
-            if not series_id:
-                continue
+    if coordinator.data is None:
+        _LOGGER.warning(
+            "Coordinator data not yet available for %s; deferring series sensor setup",
+            location_id,
+        )
+    else:
+        ts_name_map = _build_ts_name_map(coordinator)
 
-            series_id = str(series_id)
-            # Deduplicate across sources by series_id alone
-            if series_id in series_entities:
-                continue
+        series_entities: dict[str, USGSSeriesSensor] = {}
+        for source in SERIES_SOURCES:
+            for record in coordinator.data.get(source.source_key, []):
+                if not record:
+                    continue
+                series_id = record.get(source.id_field)
+                if not series_id:
+                    continue
 
-            series_entities[series_id] = USGSSeriesSensor(
-                coordinator=coordinator,
-                location_id=location_id,
-                source=source,
-                series_id=series_id,
-                ts_name_map=ts_name_map,
-            )
+                series_id = str(series_id)
+                # Deduplicate across sources by series_id alone
+                if series_id in series_entities:
+                    continue
 
-    entities.extend(series_entities.values())
+                _LOGGER.debug(
+                    "Creating sensor for %s: series_id=%s, source=%s",
+                    location_id,
+                    series_id,
+                    source.source_key,
+                )
+                series_entities[series_id] = USGSSeriesSensor(
+                    coordinator=coordinator,
+                    location_id=location_id,
+                    source=source,
+                    series_id=series_id,
+                    ts_name_map=ts_name_map,
+                )
+
+        _LOGGER.info(
+            "Setting up %d series sensors + 1 summary for %s",
+            len(series_entities),
+            location_id,
+        )
+        # Log data availability for debugging
+        if series_entities or True:  # Always log for now
+            for source in SERIES_SOURCES:
+                count = len(coordinator.data.get(source.source_key, []))
+                _LOGGER.debug("%s has %d records", source.source_key, count)
+        entities.extend(series_entities.values())
+
     async_add_entities(entities)
 
 

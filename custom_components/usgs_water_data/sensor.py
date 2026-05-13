@@ -34,6 +34,17 @@ SERIES_SOURCES: tuple[SeriesDescriptor, ...] = (
 )
 
 
+def _build_ts_name_map(coordinator: USGSWaterDataCoordinator) -> dict[str, str]:
+    """Build a map of time_series_id -> parameter_name from metadata."""
+    name_map: dict[str, str] = {}
+    for record in coordinator.data.get("time_series_metadata", []):
+        ts_id = record.get("time_series_id") or record.get("id")
+        param_name = record.get("parameter_name")
+        if ts_id and param_name:
+            name_map[str(ts_id)] = param_name
+    return name_map
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -42,6 +53,7 @@ async def async_setup_entry(
     """Set up sensors from a config entry."""
     coordinator: USGSWaterDataCoordinator = hass.data[DOMAIN][entry.entry_id]
     location_id = entry.data[CONF_MONITORING_LOCATION_ID]
+    ts_name_map = _build_ts_name_map(coordinator)
 
     entities: list[SensorEntity] = [USGSSummarySensor(coordinator, location_id)]
 
@@ -52,15 +64,17 @@ async def async_setup_entry(
             if not series_id:
                 continue
 
-            unique_key = f"{source.source_key}_{series_id}"
-            if unique_key in series_entities:
+            series_id = str(series_id)
+            # Deduplicate across sources by series_id alone
+            if series_id in series_entities:
                 continue
 
-            series_entities[unique_key] = USGSSeriesSensor(
+            series_entities[series_id] = USGSSeriesSensor(
                 coordinator=coordinator,
                 location_id=location_id,
                 source=source,
-                series_id=str(series_id),
+                series_id=series_id,
+                ts_name_map=ts_name_map,
             )
 
     entities.extend(series_entities.values())
@@ -163,20 +177,37 @@ class USGSSeriesSensor(USGSBaseEntity, SensorEntity):
         location_id: str,
         source: SeriesDescriptor,
         series_id: str,
+        ts_name_map: dict[str, str] | None = None,
     ) -> None:
         """Initialize series sensor."""
         super().__init__(coordinator, location_id)
         self._source = source
         self._series_id = series_id
-        self._attr_unique_id = f"{location_id}_{source.source_key}_{series_id}"
-        self._attr_name = f"{source.label} {series_id}"
+        # Unique ID is scoped to the monitoring location + series ID only,
+        # independent of config entry IDs or source collection names.
+        self._attr_unique_id = f"{location_id}_{series_id}"
+        # Human-readable name: prefer parameter_name from metadata, then
+        # parameter_code from the record, then fall back to the raw series ID.
+        initial_record = self._find_record_in(coordinator.data)
+        param_code = (initial_record or {}).get("parameter_code", "")
+        param_name = (
+            (ts_name_map or {}).get(series_id)
+            or (initial_record or {}).get("parameter_name")
+            or (f"{source.label} {param_code}" if param_code else None)
+            or f"{source.label} {series_id}"
+        )
+        self._attr_name = param_name
 
-    def _get_record(self) -> dict[str, Any] | None:
-        """Return current record for this series sensor."""
-        for record in self.coordinator.data.get(self._source.source_key, []):
+    def _find_record_in(self, data: dict[str, Any]) -> dict[str, Any] | None:
+        """Look up the record for this series in the given data snapshot."""
+        for record in data.get(self._source.source_key, []):
             if str(record.get(self._source.id_field)) == self._series_id:
                 return record
         return None
+
+    def _get_record(self) -> dict[str, Any] | None:
+        """Return current record for this series sensor."""
+        return self._find_record_in(self.coordinator.data)
 
     @property
     def native_value(self) -> Any:

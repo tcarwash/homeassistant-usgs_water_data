@@ -7,6 +7,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 
 from .const import (
+    CONF_API_KEY,
     CONF_HISTORY_DAYS,
     CONF_MONITORING_LOCATION_ID,
     CONF_RECORD_LIMIT,
@@ -32,10 +33,13 @@ class USGSWaterDataConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(monitoring_location_id)
             self._abort_if_unique_id_configured()
 
+            api_key = user_input.get(CONF_API_KEY, "").strip()
+
             return self.async_create_entry(
                 title=f"USGS {monitoring_location_id}",
                 data={CONF_MONITORING_LOCATION_ID: monitoring_location_id},
                 options={
+                    CONF_API_KEY: api_key,
                     CONF_HISTORY_DAYS: user_input[CONF_HISTORY_DAYS],
                     CONF_RECORD_LIMIT: user_input[CONF_RECORD_LIMIT],
                     CONF_SCAN_INTERVAL_MINUTES: user_input[CONF_SCAN_INTERVAL_MINUTES],
@@ -50,6 +54,7 @@ class USGSWaterDataConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return vol.Schema(
             {
                 vol.Required(CONF_MONITORING_LOCATION_ID): str,
+                vol.Optional(CONF_API_KEY, default=""): str,
                 vol.Optional(
                     CONF_HISTORY_DAYS,
                     default=DEFAULT_HISTORY_DAYS,
@@ -82,6 +87,7 @@ class USGSWaterDataOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input: dict | None = None):
         """Manage options."""
         if user_input is not None:
+            user_input[CONF_API_KEY] = user_input.get(CONF_API_KEY, "").strip()
             return self.async_create_entry(title="", data=user_input)
 
         options = self.config_entry.options
@@ -89,6 +95,10 @@ class USGSWaterDataOptionsFlow(config_entries.OptionsFlow):
             step_id="init",
             data_schema=vol.Schema(
                 {
+                    vol.Optional(
+                        CONF_API_KEY,
+                        default=options.get(CONF_API_KEY, ""),
+                    ): str,
                     vol.Optional(
                         CONF_HISTORY_DAYS,
                         default=options.get(CONF_HISTORY_DAYS, DEFAULT_HISTORY_DAYS),

@@ -11,6 +11,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import USGSWaterDataApiClient
 from .const import (
+    CONF_API_KEY,
     CONF_HISTORY_DAYS,
     CONF_MONITORING_LOCATION_ID,
     CONF_RECORD_LIMIT,
@@ -32,7 +33,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up USGS Water Data from a config entry."""
     session = async_get_clientsession(hass)
-    api = USGSWaterDataApiClient(session)
+    api_key = entry.options.get(CONF_API_KEY, entry.data.get(CONF_API_KEY))
+    api = USGSWaterDataApiClient(session, api_key=api_key)
 
     monitoring_location_id = entry.data[CONF_MONITORING_LOCATION_ID]
     history_days = entry.options.get(CONF_HISTORY_DAYS, DEFAULT_HISTORY_DAYS)

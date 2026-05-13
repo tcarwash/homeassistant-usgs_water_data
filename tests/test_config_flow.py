@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 from custom_components.usgs_water_data.const import (
+    CONF_API_KEY,
     CONF_HISTORY_DAYS,
     CONF_MONITORING_LOCATION_ID,
     CONF_RECORD_LIMIT,
@@ -35,6 +36,7 @@ async def test_user_flow_creates_entry(hass):
             context={"source": "user"},
             data={
                 CONF_MONITORING_LOCATION_ID: "usgs-02238500",
+                CONF_API_KEY: "abc123",
                 CONF_HISTORY_DAYS: 5,
                 CONF_RECORD_LIMIT: 50,
                 CONF_SCAN_INTERVAL_MINUTES: 10,
@@ -45,6 +47,7 @@ async def test_user_flow_creates_entry(hass):
     assert result["title"] == "USGS USGS-02238500"
     assert result["data"] == {CONF_MONITORING_LOCATION_ID: "USGS-02238500"}
     assert result["options"] == {
+        CONF_API_KEY: "abc123",
         CONF_HISTORY_DAYS: 5,
         CONF_RECORD_LIMIT: 50,
         CONF_SCAN_INTERVAL_MINUTES: 10,

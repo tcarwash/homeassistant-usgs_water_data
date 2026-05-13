@@ -8,6 +8,7 @@ DOMAIN = "usgs_water_data"
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
+CONF_API_KEY = "api_key"
 CONF_MONITORING_LOCATION_ID = "monitoring_location_id"
 CONF_HISTORY_DAYS = "history_days"
 CONF_RECORD_LIMIT = "record_limit"

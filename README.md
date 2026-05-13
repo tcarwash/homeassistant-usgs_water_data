@@ -10,6 +10,7 @@ Install this custom integration with HACS, then restart Home Assistant.
 2. Search for USGS Water Data.
 3. Enter a `monitoring_location_id` (example: `USGS-02238500`).
 4. Optionally tune:
+   - `api_key`: Optional USGS API key (signup: https://api.waterdata.usgs.gov/signup). Sent as `X_api_key` header and may help with rate limiting.
    - `history_days`: How far back to fetch historical daily/continuous records.
    - `record_limit`: Maximum records requested per collection.
    - `scan_interval_minutes`: Polling interval.

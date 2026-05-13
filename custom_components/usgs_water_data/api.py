@@ -17,9 +17,10 @@ _RETRY_BASE_DELAY = 2.0  # seconds; doubled on each retry
 class USGSWaterDataApiClient:
     """Client for the USGS Water Data API."""
 
-    def __init__(self, session: ClientSession) -> None:
+    def __init__(self, session: ClientSession, api_key: str | None = None) -> None:
         """Initialize the API client."""
         self._session = session
+        self._api_key = api_key.strip() if api_key else None
 
     async def _get(
         self, path: str, params: dict[str, Any] | None = None
@@ -27,12 +28,16 @@ class USGSWaterDataApiClient:
         """Issue a GET request and return JSON payload, retrying on 429."""
         request_params = {"f": "json", **(params or {})}
         url = f"{BASE_URL}{path}"
+        request_headers = {"X_api_key": self._api_key} if self._api_key else None
         delay = _RETRY_BASE_DELAY
 
         for attempt in range(_MAX_RETRIES):
             try:
                 async with self._session.get(
-                    url, params=request_params, timeout=30
+                    url,
+                    params=request_params,
+                    headers=request_headers,
+                    timeout=30,
                 ) as response:
                     if response.status == 429:
                         retry_after = float(

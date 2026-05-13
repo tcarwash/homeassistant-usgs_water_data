@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any
 
@@ -54,7 +54,11 @@ class USGSWaterDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch all data for the configured monitoring location."""
-        datetime_filter = f"P{self.history_days}D" if self.history_days else None
+        datetime_filter = None
+        if self.history_days:
+            start = datetime.now(timezone.utc) - timedelta(days=self.history_days)
+            start_iso = start.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            datetime_filter = f"{start_iso}/.."
 
         try:
             tasks = [

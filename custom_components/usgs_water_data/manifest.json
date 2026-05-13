@@ -1,0 +1,11 @@
+{
+  "codeowners": ["@tcarwash"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/tcarwas/homeassistant-usgs_water_data",
+  "domain": "usgs_water_data",
+  "iot_class": "cloud_polling",
+  "name": "USGS Water Data",
+  "requirements": [],
+  "version": "1.0.0"
+}
